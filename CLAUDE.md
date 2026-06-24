@@ -9,9 +9,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run server
-uvicorn main:app --reload
-
 # Run CLI scripts
 pr-reminder [--dry-run]
 jira-overdue-reminder
@@ -34,7 +31,7 @@ pre-commit run --all-files
 
 ## Environment
 
-Copy `.env.example` (or create `.env`) with these keys:
+Create a `.env` file with these keys:
 
 | Variable | Purpose |
 |---|---|
@@ -49,59 +46,43 @@ Copy `.env.example` (or create `.env`) with these keys:
 
 ## Architecture
 
-### Entry Points
+### Package Structure
 
-Two separate entry points share the same `review_request` package:
-
-1. **FastAPI web server** (`main.py`) — receives Slack slash commands and Jira webhooks.
-2. **CLI scripts** (`pr-reminder`, `jira-overdue-reminder`) — run on a schedule to push reminders proactively.
-
-### Request Flow (Slash Command)
+The installable package lives in `src/review_request/`. It has no web framework dependency — consumers call the services directly from their own application.
 
 ```
-Slack slash command
-  → POST /conversation/
-  → middleware: verify_slack_request (HMAC signature check, only for /conversation/)
-  → api/message.py: conversation()
-  → services/send_message.py: SendMessage.send()
-      → parse Slack message text (regex for user/channel/group/PR URL mentions)
-      → services/github.py: GitHub.get_pr_details() + get_pr_reviewers()
-      → decorators/random_review_message.py: build randomised message string
-      → services/slack.py: Slack.chat_post_message() or chat_schedule_message_with_timezone()
+services/       core business logic (GitHub, Slack, SendMessage, PRReminderService, …)
+decorators/     randomised Slack message templates (BaseMessageDecorator pattern)
+serializers/    pydantic models for Slack and Jira payloads
+config/         settings (pydantic-settings) + hardcoded team/channel/repo mappings
+utils/          date checking, logging helpers, validation
+scripts/        CLI entry points (pr-reminder, jira-overdue-reminder)
 ```
 
-The `--scheduled=YYYY/MM/DD HH:MM:SS` flag in the slash command text schedules delivery via Slack's API (GMT+7 timezone assumed).
+### Key Services
 
-### Request Flow (PR Reminder Script)
+**`SendMessage`** (`services/send_message.py`) — orchestrates a slash command review request end-to-end:
+1. Parses Slack message text via regex (extracts user IDs, channel IDs, group IDs, PR URLs, optional `--scheduled=` date)
+2. Fetches PR title + requested reviewer teams from GitHub
+3. Formats reviewers (Slack user mentions, subteam mentions, or falls back to GitHub PR reviewers)
+4. Posts or schedules the message via Slack
 
-```
-pr-reminder (cron)
-  → scripts/pr_reminder.py: iterates GITHUB_TEAM_REMINDER_MAPPING
-  → services/pr_reminder_service.py: PRReminderService
-      → checks DateChecker.should_send_reminder() against configured days
-      → services/github.py: GitHub.get_team_review_requests() across all GITHUB_REPOSITORIES
-      → decorators/random_remind_review_messages.py: build header message
-      → services/slack.py: Slack.chat_post_message()
-```
+**`PRReminderService`** (`services/pr_reminder_service.py`) — daily reminder flow:
+1. Checks `DateChecker.should_send_reminder()` against configured days
+2. Fetches open PRs for a GitHub team across all `GITHUB_REPOSITORIES`
+3. Builds a digest message via `RandomRemindReviewMessagesDecorator`
+4. Posts to the team's Slack channel
 
-### Middleware Chain (`main.py`)
+### Message Decorator Pattern (`decorators/`)
 
-Applied outermost-first (FastAPI executes last-registered first):
+`BaseMessageDecorator` selects a random template from `get_templates()` and fills it using `get_template_placeholders()`. Subclasses implement those two methods. This produces varied, friendly messages without branching logic in callers.
 
-1. `error_monitoring` — catches unhandled exceptions, reports to Rollbar, re-raises.
-2. `log_traffic` — logs full request/response metadata at INFO.
-3. `verify_slack_request` — validates Slack HMAC signature; only active when `SLACK_SIGNING_SECRET` is set and path starts with `/conversation`.
+### Configuration (`config/settings.py`)
 
-### Configuration (`src/review_request/config/settings.py`)
-
-- `Settings` (Pydantic `BaseSettings`) — reads from env / `.env` file.
-- `SLACK_TEAM_MAPPINGS` — hardcoded `@handle → Slack group ID` lookup used when a Slack handle appears in a PR's reviewer list.
-- `GITHUB_REPOSITORIES` — list of repos to scan for the reminder script.
+- `Settings` (pydantic `BaseSettings`) — reads from env / `.env` file.
+- `SLACK_TEAM_MAPPINGS` — hardcoded `@handle → Slack group ID` used when a GitHub PR reviewer handle needs to be mentioned in Slack.
+- `GITHUB_REPOSITORIES` — list of repos scanned by the reminder script.
 - `GITHUB_TEAM_REMINDER_MAPPING` / `JIRA_TEAM_REMINDER_MAPPING` — per-team config (channel, Slack group, GitHub team slug, reminder days).
-
-### Message Decorator Pattern (`src/review_request/decorators/`)
-
-`BaseMessageDecorator` defines a template method: `get_templates()` returns a list of format strings, `get_template_placeholders()` returns the values. `message()` picks a random template and formats it. Subclasses implement these two methods to produce varied, friendly messages.
 
 ### Caching & Retry
 
@@ -110,4 +91,4 @@ Applied outermost-first (FastAPI executes last-registered first):
 
 ### Publishing
 
-Merging to `main` triggers `.github/workflows/publish.yml`, which builds the package and publishes to PyPI via OIDC trusted publishing (no stored token needed).
+Merging to `main` triggers `.github/workflows/publish.yml`, which builds the package and publishes to PyPI via OIDC trusted publishing. Always run `./scripts/bump_version.sh` before merging so PyPI does not reject a duplicate version.
