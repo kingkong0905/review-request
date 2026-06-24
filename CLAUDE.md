@@ -37,12 +37,8 @@ Create a `.env` file with these keys:
 |---|---|
 | `GITHUB_TOKEN` | GitHub API auth |
 | `BOT_TOKEN` | Slack bot token |
-| `CHANNEL_ID` | Default Slack channel |
-| `SLACK_SIGNING_SECRET` | Validates incoming Slack requests |
-| `ROLLBAR_ACCESS_TOKEN` | Error monitoring |
 | `JIRA_SITE` / `JIRA_EMAIL` / `JIRA_API_TOKEN` | Jira API access |
 | `APP_URL` | Public URL for bot icon (optional) |
-| `MAX_AGE_PR_DAYS` | Filter PRs older than this (default: 60) |
 
 ## Architecture
 
@@ -54,8 +50,7 @@ The installable package lives in `src/review_request/`. It has no web framework 
 services/       core business logic (GitHub, Slack, SendMessage, PRReminderService, …)
 decorators/     randomised Slack message templates (BaseMessageDecorator pattern)
 serializers/    pydantic models for Slack and Jira payloads
-config/         settings (pydantic-settings) + hardcoded team/channel/repo mappings
-utils/          date checking, logging helpers, validation
+utils/          date checking, logging helpers
 scripts/        CLI entry points (pr-reminder, jira-overdue-reminder)
 ```
 
@@ -69,20 +64,15 @@ scripts/        CLI entry points (pr-reminder, jira-overdue-reminder)
 
 **`PRReminderService`** (`services/pr_reminder_service.py`) — daily reminder flow:
 1. Checks `DateChecker.should_send_reminder()` against configured days
-2. Fetches open PRs for a GitHub team across all `GITHUB_REPOSITORIES`
+2. Fetches open PRs for a GitHub team across the `repositories` list passed to the constructor
 3. Builds a digest message via `RandomRemindReviewMessagesDecorator`
 4. Posts to the team's Slack channel
+
+All services accept credentials and mappings as constructor parameters — there is no global settings object. The consuming application owns its own configuration.
 
 ### Message Decorator Pattern (`decorators/`)
 
 `BaseMessageDecorator` selects a random template from `get_templates()` and fills it using `get_template_placeholders()`. Subclasses implement those two methods. This produces varied, friendly messages without branching logic in callers.
-
-### Configuration (`config/settings.py`)
-
-- `Settings` (pydantic `BaseSettings`) — reads from env / `.env` file.
-- `SLACK_TEAM_MAPPINGS` — hardcoded `@handle → Slack group ID` used when a GitHub PR reviewer handle needs to be mentioned in Slack.
-- `GITHUB_REPOSITORIES` — list of repos scanned by the reminder script.
-- `GITHUB_TEAM_REMINDER_MAPPING` / `JIRA_TEAM_REMINDER_MAPPING` — per-team config (channel, Slack group, GitHub team slug, reminder days).
 
 ### Caching & Retry
 
