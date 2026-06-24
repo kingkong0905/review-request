@@ -5,7 +5,6 @@ from slack_sdk.web.async_client import AsyncWebClient
 from datetime import datetime, timedelta
 import pytz
 from tenacity import retry, stop_after_attempt, wait_exponential
-from review_request.services.rollbar_service import RollbarService
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -46,13 +45,6 @@ class Slack:
             return {f"@{ug['handle']}": ug["id"] for ug in result["usergroups"]}
         except Exception as e:
             logger.error(f"Failed to fetch usergroups: {e}")
-            RollbarService.report_error(
-                exc=e,
-                extra_data={
-                    "operation": "get_slack_usergroups",
-                    "channel_ids": self.channel_ids,
-                },
-            )
             raise SlackError(f"Failed to fetch usergroups: {e}")
 
     async def _post_to_channel(
@@ -184,11 +176,4 @@ class Slack:
             return result.get("users", [])
         except Exception as e:
             logger.error(f"Failed to get usergroup members for {usergroup_id}: {e}")
-            RollbarService.report_error(
-                exc=e,
-                extra_data={
-                    "operation": "get_usergroup_members",
-                    "usergroup_id": usergroup_id,
-                },
-            )
             return []

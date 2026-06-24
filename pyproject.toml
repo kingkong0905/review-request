@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "review-request"
-version = "0.1.3"
+version = "0.1.4"
 description = "Slack and GitHub integration for automating code review requests"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -20,13 +20,11 @@ dependencies = [
     "slack-sdk",
     "python-dotenv",
     "validators",
-    "pydantic-settings",
     "aiohttp",
     "pydantic",
     "cachetools",
     "pytz",
     "tenacity",
-    "rollbar",
 ]
 
 [project.optional-dependencies]

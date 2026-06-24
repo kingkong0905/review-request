@@ -1,6 +1,5 @@
 import validators
 from review_request.services.github import GitHub
-from review_request.config.settings import settings, SLACK_TEAM_MAPPINGS
 from review_request.services.slack import Slack
 from review_request.decorators.random_review_message import RandomReviewMessageDecorator
 from review_request.services.cache_service import CacheService
@@ -28,11 +27,22 @@ class SendMessage:
     """Service for sending review request messages to Slack."""
 
     def __init__(
-        self, user_id: str, message: str, channel_id: Optional[str] = None
+        self,
+        user_id: str,
+        message: str,
+        github_token: str,
+        bot_token: str,
+        default_channel_id: str = "",
+        channel_id: Optional[str] = None,
+        slack_team_mappings: Optional[Dict[str, str]] = None,
     ) -> None:
         self.message: str = message
         self.user_id: str = user_id
+        self.github_token: str = github_token
+        self.bot_token: str = bot_token
+        self.default_channel_id: str = default_channel_id
         self.channel_id: Optional[str] = channel_id
+        self.slack_team_mappings: Dict[str, str] = slack_team_mappings or {}
 
     async def send(self) -> None:
         (
@@ -102,7 +112,9 @@ class SendMessage:
         subteams = []
         for reviewer in reviewers.split(", "):
             reviewer = reviewer.strip()
-            external_id = SLACK_TEAM_MAPPINGS.get(reviewer, usergroup_map.get(reviewer))
+            external_id = self.slack_team_mappings.get(
+                reviewer, usergroup_map.get(reviewer)
+            )
             subteams.append(f"<!subteam^{external_id}>" if external_id else reviewer)
         return " ".join(subteams)
 
@@ -132,9 +144,7 @@ class SendMessage:
 
         organization, repo, pr_number = match.groups()
 
-        async with GitHub(
-            settings.github_token, organization, repo, pr_number
-        ) as github:
+        async with GitHub(self.github_token, organization, repo, pr_number) as github:
             pr_detail, pr_reviewers = await asyncio.gather(
                 github.get_pr_details(),
                 github.get_pr_reviewers(),
@@ -155,7 +165,7 @@ class SendMessage:
             return channel_ids
         if self.channel_id:
             return [self.channel_id]
-        return [settings.channel_id]
+        return [self.default_channel_id] if self.default_channel_id else []
 
     async def _get_formatted_reviewers(
         self, user_ids: List[str], group_ids: List[str], pr_reviewers: str
@@ -180,7 +190,7 @@ class SendMessage:
         usergroup_map = cache_service.get(key_caching)
 
         if not usergroup_map:
-            slack = Slack(settings.bot_token, [])
+            slack = Slack(self.bot_token, [])
             usergroup_map = await slack.get_slack_usergroups()
             if usergroup_map:
                 cache_service.set(key_caching, usergroup_map)
@@ -209,7 +219,7 @@ class SendMessage:
         user_id: str,
         scheduled_date: Optional[str] = None,
     ) -> None:
-        slack = Slack(settings.bot_token, channel_ids)
+        slack = Slack(self.bot_token, channel_ids)
         user_info = await slack.get_user_info(user_id)
         if scheduled_date:
             await slack.chat_schedule_message_with_timezone(message, scheduled_date)

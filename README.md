@@ -19,22 +19,16 @@ Requires Python 3.11+.
 
 ## Configuration
 
-The package reads configuration from environment variables or a `.env` file in the working directory:
+There is no global config object. Pass credentials and mappings directly to each service constructor. The CLI scripts read from environment variables (or a `.env` file):
 
-```
-GITHUB_TOKEN=...
-BOT_TOKEN=xoxb-...
-CHANNEL_ID=C...
-SLACK_SIGNING_SECRET=...
-ROLLBAR_ACCESS_TOKEN=...
-JIRA_SITE=https://yourorg.atlassian.net
-JIRA_EMAIL=you@example.com
-JIRA_API_TOKEN=...
-APP_URL=https://your-service-url    # optional, used for bot icon URL
-MAX_AGE_PR_DAYS=60                  # optional, default 60
-```
-
-Team mappings and repository lists are hardcoded in `review_request/config/settings.py` — edit `GITHUB_REPOSITORIES`, `GITHUB_TEAM_REMINDER_MAPPING`, `JIRA_TEAM_REMINDER_MAPPING`, and `SLACK_TEAM_MAPPINGS` to match your organisation.
+| Variable | Purpose |
+|---|---|
+| `GITHUB_TOKEN` | GitHub API auth |
+| `BOT_TOKEN` | Slack bot token |
+| `JIRA_SITE` | e.g. `https://yourorg.atlassian.net` |
+| `JIRA_EMAIL` | Jira account email |
+| `JIRA_API_TOKEN` | Jira API token |
+| `APP_URL` | Public URL for bot icon (optional) |
 
 ## Usage
 
@@ -47,8 +41,15 @@ All services are async. Call them from a route handler, background task, or any 
 ```python
 from review_request.services.send_message import SendMessage
 
-async def handle_review_request(user_id: str, text: str, channel_id: str) -> None:
-    await SendMessage(user_id, text, channel_id).send()
+async def handle_review_request(user_id: str, text: str) -> None:
+    await SendMessage(
+        user_id=user_id,
+        message=text,
+        github_token="ghp_...",
+        bot_token="xoxb-...",
+        default_channel_id="C123456",
+        slack_team_mappings={"@squad-name": "S123456"},
+    ).send()
 ```
 
 The `text` format:
@@ -82,12 +83,14 @@ except ValueError as e:
 
 ```python
 from review_request.services.pr_reminder_service import PRReminderService
-from review_request.config.settings import settings
 
 async def send_pr_reminder() -> None:
     service = PRReminderService(
-        github_token=settings.github_token,
-        slack_token=settings.bot_token,
+        github_token="ghp_...",
+        slack_token="xoxb-...",
+        repositories=[
+            {"url": "https://github.com/org/repo", "base_branch": "main"},
+        ],
     )
     team_config = {
         "channel_id": "C123456",         # Slack channel to post to
@@ -112,7 +115,6 @@ from review_request.services.jira_sprint_notification_service import (
     JiraSprintNotificationService,
     SprintNotificationError,
 )
-from review_request.config.settings import settings
 
 async def notify_sprint_complete(
     channel_id: str,
@@ -121,7 +123,7 @@ async def notify_sprint_complete(
     end_date: str,
     completed_by: str,
 ) -> None:
-    service = JiraSprintNotificationService(slack_token=settings.bot_token)
+    service = JiraSprintNotificationService(slack_token="xoxb-...")
     await service.send_notification(
         channel_id=channel_id,
         sprint_name=sprint_name,
@@ -132,7 +134,7 @@ async def notify_sprint_complete(
 
 # Or process a raw Jira webhook payload (only acts on "sprint_closed" events)
 async def handle_jira_webhook(channel_id: str, webhook_data: dict) -> None:
-    service = JiraSprintNotificationService(slack_token=settings.bot_token)
+    service = JiraSprintNotificationService(slack_token="xoxb-...")
     await service.process_webhook(channel_id=channel_id, webhook_data=webhook_data)
 ```
 
@@ -144,14 +146,13 @@ async def handle_jira_webhook(channel_id: str, webhook_data: dict) -> None:
 
 ```python
 from review_request.services.jira_overdue_reminder_service import JiraOverdueReminderService
-from review_request.config.settings import settings
 
 async def send_jira_overdue_reminder() -> None:
     service = JiraOverdueReminderService(
-        jira_site=settings.jira_site,
-        jira_email=settings.jira_email,
-        jira_api_token=settings.jira_api_token,
-        slack_token=settings.bot_token,
+        jira_site="https://yourorg.atlassian.net",
+        jira_email="you@example.com",
+        jira_api_token="...",
+        slack_token="xoxb-...",
     )
     team_config = {
         "channel_id": "C123456",

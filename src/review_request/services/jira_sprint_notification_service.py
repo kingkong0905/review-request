@@ -7,7 +7,6 @@ from slack_sdk.web.async_client import AsyncWebClient
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from review_request.decorators.message_templates import SprintCompletionMessageTemplates
-from review_request.services.rollbar_service import RollbarService
 
 logger = logging.getLogger(__name__)
 
@@ -95,16 +94,6 @@ class JiraSprintNotificationService:
         except Exception as e:
             error_msg = f"Failed to send sprint notification: {str(e)}"
             logger.error(error_msg, exc_info=True)
-
-            RollbarService.report_error(
-                exc=e,
-                extra_data={
-                    "operation": "send_sprint_notification",
-                    "channel_id": channel_id,
-                    "sprint_name": sprint_name,
-                },
-            )
-
             raise SprintNotificationError(error_msg) from e
 
     async def process_webhook(self, channel_id: str, webhook_data: Dict) -> Dict:
@@ -132,14 +121,4 @@ class JiraSprintNotificationService:
         except Exception as e:
             error_msg = f"Failed to process sprint webhook: {str(e)}"
             logger.error(error_msg, exc_info=True)
-
-            RollbarService.report_error(
-                exc=e,
-                extra_data={
-                    "operation": "process_sprint_webhook",
-                    "channel_id": channel_id,
-                    "webhook_event": webhook_data.get("webhookEvent"),
-                },
-            )
-
             raise SprintNotificationError(error_msg) from e
