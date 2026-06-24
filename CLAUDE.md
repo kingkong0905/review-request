@@ -16,6 +16,9 @@ uvicorn main:app --reload
 pr-reminder [--dry-run]
 jira-overdue-reminder
 
+# Bump package version before merging to main
+./scripts/bump_version.sh [major|minor|patch]   # defaults to patch
+
 # Tests
 pytest                                          # all tests
 pytest tests/path/test_file.py::test_name       # single test

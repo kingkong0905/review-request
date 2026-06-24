@@ -89,3 +89,13 @@ pre-commit run --all-files       # run all pre-commit hooks
 ## Publishing
 
 Merging to `main` automatically publishes to PyPI via GitHub Actions using OIDC trusted publishing (no stored token required).
+
+Before merging, bump the version so PyPI doesn't reject a duplicate:
+
+```bash
+./scripts/bump_version.sh          # patch bump (0.1.0 → 0.1.1)
+./scripts/bump_version.sh minor    # minor bump (0.1.0 → 0.2.0)
+./scripts/bump_version.sh major    # major bump (0.1.0 → 1.0.0)
+```
+
+This updates `pyproject.toml` and `src/review_request/__init__.py` in one step.
