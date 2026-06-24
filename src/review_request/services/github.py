@@ -3,7 +3,6 @@ import aiohttp
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential
 from review_request.services.cache_service import CacheService
-from review_request.services.rollbar_service import RollbarService
 import hashlib
 from datetime import datetime
 
@@ -103,17 +102,6 @@ class GitHub:
             else:
                 error_msg = f"GitHub API error: {response.status} for URL: {url}"
                 logger.error(error_msg)
-
-                RollbarService.report_error(
-                    exc=GitHubError(error_msg),
-                    extra_data={
-                        "url": url,
-                        "status_code": response.status,
-                        "organization": self.organization,
-                        "repo": self.repo,
-                        "pr_number": self.pull_request_number,
-                    },
-                )
 
                 raise GitHubError(error_msg)
 

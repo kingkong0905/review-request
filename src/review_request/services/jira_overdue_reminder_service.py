@@ -2,8 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional
 from review_request.services.jira import Jira
 from review_request.services.slack import Slack
-from review_request.services.rollbar_service import RollbarService
-from review_request.config.settings import settings
 from review_request.decorators.jira_overdue_message import JiraOverdueMessageDecorator
 from review_request.utils.date_checker import DateChecker
 
@@ -19,17 +17,23 @@ DEFAULT_JQL = 'statusCategory = "In Progress" AND duedate < now() AND type != Ep
 
 class JiraOverdueReminderService:
     def __init__(
-        self, jira_site: str, jira_email: str, jira_api_token: str, slack_token: str
+        self,
+        jira_site: str,
+        jira_email: str,
+        jira_api_token: str,
+        slack_token: str,
+        app_url: str = "",
     ):
         self.jira_site = jira_site
         self.jira_email = jira_email
         self.jira_api_token = jira_api_token
         self.slack_token = slack_token
+        self.app_url = app_url
 
     def _get_bot_icon_url(self) -> str:
-        app_url = settings.app_url.strip().rstrip("/")
-        if app_url:
-            return f"{app_url}/jira-overdue-bot.png"
+        base = self.app_url.strip().rstrip("/")
+        if base:
+            return f"{base}/jira-overdue-bot.png"
         return "https://github.com/github.png"
 
     def _format_issue_line(
@@ -114,12 +118,6 @@ class JiraOverdueReminderService:
             return "\n".join(lines).strip()
         except Exception as e:
             logger.error(f"Failed to generate Jira reminder message: {e}")
-            RollbarService.report_error(
-                exc=JiraOverdueReminderError(
-                    "Failed to generate Jira reminder message"
-                ),
-                extra_data={"team_config": team_config},
-            )
             return None
 
     async def send_reminder(
@@ -159,8 +157,4 @@ class JiraOverdueReminderService:
             return True
         except Exception as e:
             logger.error(f"Failed to send Jira reminder: {e}")
-            RollbarService.report_error(
-                exc=JiraOverdueReminderError("Failed to send Jira reminder"),
-                extra_data={"team_config": team_config, "dry_run": dry_run},
-            )
             return False

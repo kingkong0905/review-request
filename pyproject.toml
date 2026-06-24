@@ -20,13 +20,11 @@ dependencies = [
     "slack-sdk",
     "python-dotenv",
     "validators",
-    "pydantic-settings",
     "aiohttp",
     "pydantic",
     "cachetools",
     "pytz",
     "tenacity",
-    "rollbar",
 ]
 
 [project.optional-dependencies]

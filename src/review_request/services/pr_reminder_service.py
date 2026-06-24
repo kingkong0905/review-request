@@ -3,11 +3,9 @@ import logging
 from urllib.parse import urlparse
 from review_request.services.github import GitHub
 from review_request.services.slack import Slack
-from review_request.services.rollbar_service import RollbarService
 from review_request.decorators.random_remind_review_messages import (
     RandomRemindReviewMessagesDecorator,
 )
-from review_request.config.settings import GITHUB_REPOSITORIES, settings
 from review_request.utils.date_checker import DateChecker
 
 logger = logging.getLogger(__name__)
@@ -20,14 +18,22 @@ class PRReminderError(Exception):
 class PRReminderService:
     """Service for fetching and formatting PR reminders for Slack."""
 
-    def __init__(self, github_token: str, slack_token: str):
+    def __init__(
+        self,
+        github_token: str,
+        slack_token: str,
+        repositories: List[Dict[str, str]],
+        app_url: str = "",
+    ):
         self.github_token = github_token
         self.slack_token = slack_token
+        self.repositories = repositories
+        self.app_url = app_url
 
     def _get_bot_icon_url(self) -> str:
-        app_url = settings.app_url.strip().rstrip("/")
-        if app_url:
-            return f"{app_url}/bot-icon.png"
+        base = self.app_url.strip().rstrip("/")
+        if base:
+            return f"{base}/bot-icon.png"
         return "https://github.com/github.png"
 
     def _parse_repo_url(self, repo_url: str) -> tuple[str, str]:
@@ -125,7 +131,7 @@ class PRReminderService:
                 logger.warning(f"Incomplete team configuration: {team_config}")
                 return None
 
-            repos = GITHUB_REPOSITORIES
+            repos = self.repositories
             slack_subteam_id = await self._get_slack_group_id(slack_group_id)
 
             all_prs_by_repo = {}
@@ -164,10 +170,6 @@ class PRReminderService:
 
         except Exception as e:
             logger.error(f"Failed to generate reminder message: {str(e)}")
-            RollbarService.report_error(
-                exc=PRReminderError(f"Failed to generate reminder message: {str(e)}"),
-                extra_data={"team_config": team_config},
-            )
             return None
 
     async def send_reminder(
@@ -213,8 +215,4 @@ class PRReminderService:
 
         except Exception as e:
             logger.error(f"Failed to send reminder: {str(e)}")
-            RollbarService.report_error(
-                exc=PRReminderError(f"Failed to send reminder: {str(e)}"),
-                extra_data={"team_config": team_config, "dry_run": dry_run},
-            )
             return False
