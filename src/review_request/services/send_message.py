@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 USER_ID_PATTERN = re.compile(r"<@([A-Z0-9]+)\|")
 CHANNEL_ID_PATTERN = re.compile(r"<#([A-Z0-9]+)(?:\|[^>]*)?>")
-GROUP_ID_PATTERN = re.compile(r"<!subteam\^([A-Z0-9]+)\|")
+GROUP_ID_PATTERN = re.compile(r"<!subteam\^([A-Z0-9]+)(?:\|[^>]*)?>")
+
 PR_URL_PATTERN = re.compile(r"https://github.com/[^/]+/[^/]+/pull/\d+")
 SCHEDULED_DATE_PATTERN = re.compile(
     r"--scheduled=(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})"
