@@ -7,7 +7,12 @@ from typing import Dict, List, Optional
 import pytz
 from slack_sdk.errors import SlackApiError as SlackSdkApiError
 from slack_sdk.web.async_client import AsyncWebClient
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_not_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,29 +64,26 @@ class Slack:
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=4, max=10),
+            retry=retry_if_not_exception_type(ChannelNotFoundError),
         )
         async def _post():
-            await self.client.chat_postMessage(
-                channel=channel,
-                text=message,
-                icon_url=user_info["profile"]["image_48"],
-                username=user_info["real_name"],
-            )
+            try:
+                await self.client.chat_postMessage(
+                    channel=channel,
+                    text=message,
+                    icon_url=user_info["profile"]["image_48"],
+                    username=user_info["real_name"],
+                )
+            except SlackSdkApiError as e:
+                if e.response.get("error") == "channel_not_found":
+                    raise ChannelNotFoundError(
+                        f"Channel {channel} not found. For private channels, "
+                        "invite the bot first (e.g. /invite @bot-name)."
+                    ) from e
+                raise
             logger.info(f"Message posted to channel {channel}")
 
-        try:
-            await _post()
-        except Exception as e:
-            original = e.last_attempt.exception() if hasattr(e, "last_attempt") else e
-            if (
-                isinstance(original, SlackSdkApiError)
-                and original.response.get("error") == "channel_not_found"
-            ):
-                raise ChannelNotFoundError(
-                    f"Channel {channel} not found. For private channels, "
-                    "invite the bot first (e.g. /invite @bot-name)."
-                ) from e
-            raise
+        await _post()
 
     async def chat_post_message(self, message: str, user_info: Dict) -> None:
         try:
@@ -108,11 +110,20 @@ class Slack:
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=4, max=10),
+            retry=retry_if_not_exception_type(ChannelNotFoundError),
         )
         async def _schedule():
-            await self.client.chat_scheduleMessage(
-                channel=channel, text=message, post_at=post_at
-            )
+            try:
+                await self.client.chat_scheduleMessage(
+                    channel=channel, text=message, post_at=post_at
+                )
+            except SlackSdkApiError as e:
+                if e.response.get("error") == "channel_not_found":
+                    raise ChannelNotFoundError(
+                        f"Channel {channel} not found. For private channels, "
+                        "invite the bot first (e.g. /invite @bot-name)."
+                    ) from e
+                raise
             logger.info(f"Message scheduled for channel {channel} at {post_at}")
 
         await _schedule()
